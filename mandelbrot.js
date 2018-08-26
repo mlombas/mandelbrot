@@ -1,4 +1,10 @@
+/*
+ * Worker, so mandelbrot calculation happens behind the main thread
+ * and doesnt prevent the user from toying around between drawings
+*/
+
 self.onmessage = msg => {
+
     let {dimension, center, scale, maxIter} = msg.data;
     
     let img = new ImageData(dimension, dimension);
