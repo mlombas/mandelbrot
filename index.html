@@ -32,12 +32,13 @@
         <p>Current: <span id="resNum">480</span></p>
         <input id="resSlide" type="range" min="10" max="2000" value="480">
         <script>
-            let dimension = 480,
+            let dimension = 480, //Variables for canvases
                 scale = 1, mandelScale = 1,
                 center = {x: 0, y: 0}, mandelCenter = {x: 0, y: 0},
                 maxIter = 50,
-                tBetweenDrawings = 100;
+                tBetweenDrawings = 100, currentlyDrawing = false;
 
+            //---------------------Drawing stuff---------------------------
             let canvas = document.querySelector("canvas");
             canvas.width = 2000;
             canvas.height = 1500;
@@ -47,48 +48,48 @@
             mandelCanvas.height = canvas.height;
 
             function drawMandelbrot(dimension, pos, scale, maxIter) {
-                let oldMandelbrot = {
+                let oldMandelbrot = { //Track coordinates in the moment on which the new canvas is being renderized
                     center: Object.assign({}, mandelCenter),
                     scale: mandelScale
                 }
+                currentlyDrawing = true;                
 
                 new Promise((resolve, reject) => {
-                    drawMandelbrot.mandelbrotWorker.onmessage = msg => {
-                        let preCanvas = document.createElement("canvas");
-                        preCanvas.width = dimension;
-                        preCanvas.height = dimension;
-                        let preCtx = preCanvas.getContext("2d");
-
-                        let img = msg.data;
-                        preCtx.putImageData(img, 0, 0);
-
-                        resolve(preCanvas);
-                    };
-                    drawMandelbrot.mandelbrotWorker.postMessage({dimension: dimension, center: pos, scale: scale, maxIter: maxIter});
+                    drawMandelbrot.mandelbrotWorker.onmessage = msg => resolve(msg.data); //Wait for worker to draw the set
+                    drawMandelbrot.mandelbrotWorker.postMessage({dimension: dimension, center: pos, scale: scale, maxIter: maxIter}); 
                 })
-                .then(preCanvas => {
-                    mandelCenter = {x: mandelCenter.x - oldMandelbrot.center.x, y: mandelCenter.y - oldMandelbrot.center.y}
-
-                    mandelScale = 1; //Set scale as difference
-                    mandelScale *= oldMandelbrot.scale;
-                    mandelCenter.x *= oldMandelbrot.scale;
-                    mandelCenter.y *= oldMandelbrot.scale;
-
-                    mandelCtx.drawImage(preCanvas, 0, 0, mandelCanvas.width, mandelCanvas.height);
+                .then(imgData => {
+                    mandelCenter = {x: mandelCenter.x - oldMandelbrot.center.x, y: mandelCenter.y - oldMandelbrot.center.y} //Adjust movement and scaling that happened while set was being draw
+                    mandelScale /= oldMandelbrot.scale;
+                    mandelCenter.x /= oldMandelbrot.scale;
+                    mandelCenter.y /= oldMandelbrot.scale;
+                    
+                    createImageBitmap(imgData).then(bitmap => mandelCtx.drawImage(bitmap, 0, 0, mandelCanvas.width, mandelCanvas.height)); //First pass to imageBitmap, as drawImage() does not accept a ImageData object 
+                    currentlyDrawing = false;
                 });
             }
             drawMandelbrot.mandelbrotWorker = new window.Worker("mandelbrot.js");
+            drawMandelbrot(dimension, center, scale, maxIter);
 
-            let redrawInterval = setInterval(() => {drawMandelbrot(dimension, center, scale, maxIter); console.log("d")}, tBetweenDrawings);
+            //------------------------------------------------------Moving and scaling-----------------------------------------------------------------
+            function scaleCanvas(x) {
+                scale *= x; //also scale center
+                center.x *= x;
+                center.y *= x;
+
+                mandelScale *= x;
+                mandelCenter.x *= x;
+                mandelCenter.y *= x;
+            }
+
+            function moveCanvas(dx, dy) {
+                mandelCenter = {x: mandelCenter.x + dx, y: mandelCenter.y + dy};
+                center = {x: center.x - dx * dimension/canvas.width, y: center.y - dy * dimension/canvas.height};
+            }
+
             canvas.onmousewheel = evt => {
                 let scaleDelta = 1 + evt.wheelDelta / 120 * 0.1;
-                scale *= scaleDelta; //also scale center
-                center.x *= scaleDelta;
-                center.y *= scaleDelta;
-
-                mandelScale *= scaleDelta;
-                mandelCenter.x *= scaleDelta;
-                mandelCenter.y *= scaleDelta;
+                scaleCanvas(scaleDelta);
             }
 
             let lastPos;
@@ -99,23 +100,19 @@
                 if(mouseIsDown) {
                     let dx = (evt.clientX - lastPos.x) * canvas.width/canvas.clientWidth,
                         dy = (evt.clientY - lastPos.y) * canvas.height/canvas.clientHeight;
-                    mandelCenter = {x: mandelCenter.x + dx, y: mandelCenter.y + dy};
-                    center = {x: center.x - dx * dimension/canvas.width, y: center.y - dy * dimension/canvas.height};
+                    moveCanvas(dx, dy);
                 }
                 lastPos = {x: evt.clientX, y: evt.clientY};
             }
 
+            //------------------------------------------------Sliders---------------------------------------------------------------------------------
             document.querySelector("#iterSlide").oninput = evt => document.querySelector("#iterNum").innerHTML = evt.target.value;
-            document.querySelector("#iterSlide").onmouseup = evt => {
-                document.querySelector("#iterNum").textContent = maxIter = evt.target.value;
-                drawMandelbrot(dimension, center, scale, maxIter);
-            }
+            document.querySelector("#iterSlide").onmouseup = evt => document.querySelector("#iterNum").textContent = maxIter = parseInt(evt.target.value);
             document.querySelector("#resSlide").oninput = evt => document.querySelector("#resNum").innerHTML = evt.target.value;
-            document.querySelector("#resSlide").onmouseup = evt => {
-                document.querySelector("#resNum").textContent = dimension = evt.target.value;
-                drawMandelbrot(dimension, center, scale, maxIter);
-            }
-            drawMandelbrot(dimension, center, scale, maxIter);
+            document.querySelector("#resSlide").onmouseup = evt => document.querySelector("#resNum").textContent = dimension = parseInt(evt.target.value);
+
+            //---------------------------------Drawing loops--------------------------------------------------------------
+            let redrawInterval = setInterval(() => !currentlyDrawing ? drawMandelbrot(dimension, center, scale, maxIter) : 0, tBetweenDrawings);
 
             function drawToMainCalvas() {
                 let ctx = canvas.getContext("2d");

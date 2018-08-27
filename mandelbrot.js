@@ -4,9 +4,9 @@
 */
 
 self.onmessage = msg => {
-
-    let {dimension, center, scale, maxIter} = msg.data;
+    let {dimension, center, scale, maxIter} = msg.data; console.log(msg.data)
     
+    //---------------Image representation on the set-------------------------------------------
     let img = new ImageData(dimension, dimension);
     function putPixel(x, y, color) { //put a pixel in final img, Color is array [R,G,B,A]
         let pos = y * dimension * 4 + x * 4;
@@ -16,22 +16,23 @@ self.onmessage = msg => {
         img.data[pos + 3] = color[3];
     }
     
+    //---------------Various histogram functions, map a num in range [0,1] to a color for the img-------------------
     function bwHistogram(n) {
         if(n >= 1) return [0,0,0,255];
         
-        let shade = n * 255;
+        let shade = Math.sqrt(n) * 255;
         return [shade, shade, shade, 255];
     }
     function blueHistogram(n) {
-        if(n >= 1) return [0,0,0,0];
+        if(n >= 1) return [0,0,0,255];
 
         let shade = n * 255;
         if(n > 0.5) return [shade, shade, 255, 255]; //IF close, fade to white, if not, fade to black
         else return [0, 0, shade, 255];
     }
     
-    //reverse scale to match outer canvas
-    scale = 1/scale;
+    //-------------------------Drawing itself---------------------------------------------
+    scale = 1/scale; //reverse scale to match outer canvas
     for(let dy = 0; dy <= dimension; dy++) {
         for(let dx = 0; dx <= dimension; dx++) {
             let x_0 = scale * (dx + center.x - dimension/2) * 4/dimension, //map pixel into a 4x4 ([-2,2] per axis) plane scaled and translated, y is flipped to match real coordinate system
@@ -45,7 +46,7 @@ self.onmessage = msg => {
                 x = xTemp;
                 i++;
             }
-            putPixel(dx, dy, bwHistogram(i/maxIter));
+            putPixel(dx, dy, blueHistogram(i/maxIter)); //console.log(x_0, dx, y_0, dy)
         }
     }
 
